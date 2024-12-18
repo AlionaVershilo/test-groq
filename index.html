@@ -85,8 +85,21 @@
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
-        alert(`Server response: ${result.message}`);
+        const blob = await response.blob(); 
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'response.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        URL.revokeObjectURL(url);
+
+        // for text response
+        // const result = await response.json();
+        // alert(`Server response: ${result.message}`);
       } catch (error) {
         console.error('Error:', error);
         alert('An error occurred while sending the request.');

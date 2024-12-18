@@ -2,10 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import Groq from 'groq-sdk';
-import fs from 'fs/promises';
+import fs from 'fs';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import PDFDocument from 'pdfkit';
 
 dotenv.config();
 
@@ -41,6 +42,24 @@ const getGroqChatCompletion = async (userInput, context) => {
 
 const trimText = (text, maxLength) => {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+};
+
+const generatePDF = (text, outputPath) => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument();
+    const stream = fs.createWriteStream(outputPath);
+
+    doc.pipe(stream);
+    doc.fontSize(12).text(text, {
+      align: 'left',
+      lineGap: 6,
+    });
+
+    doc.end();
+
+    stream.on('finish', () => resolve(outputPath));
+    stream.on('error', (err) => reject(err));
+  });
 };
 
 app.post('/answerByFileContext', upload.single('file'), async (req, res) => {
@@ -87,9 +106,24 @@ app.post('/answerByLinkContext', async (req, res) => {
     const shortenedContent = trimText(linkContent, 20000);
     const groqResponse = await getGroqChatCompletion(question, shortenedContent);
 
-    res.json({
-      message: groqResponse.choices[0]?.message?.content || '',
+    const pdfContent = groqResponse.choices[0]?.message?.content || 'No content available';
+
+    // pdf response
+    const pdfPath = `./${Date.now()}_response.pdf`;
+    await generatePDF(pdfContent, pdfPath);
+
+    res.download(pdfPath, 'response.pdf', async (err) => {
+      if (err) {
+        console.error('Error sending file:', err.message);
+        res.status(500).json({ error: 'Failed to send the PDF file.' });
+      }
+      await fs.promises.unlink(pdfPath);
     });
+
+    // text response
+    // res.json({
+    //   message: groqResponse.choices[0]?.message?.content || '',
+    // });
   } catch (error) {
     console.error('Error processing link request:', error.message);
     res.status(500).json({ error: 'Failed to process your request' });
